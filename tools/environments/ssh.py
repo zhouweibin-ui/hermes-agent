@@ -25,6 +25,11 @@ logger = logging.getLogger(__name__)
 # Skip multiplexing there; each command pays a fresh connection but the backend works. See #73927.
 _SSH_MULTIPLEX = os.name != "nt"
 
+# Reverse tunnels and cross-region links can spend >10s just exchanging the SSH banner. Keep a
+# longer but still bounded handshake budget so transient latency does not disable every remote tool.
+_SSH_CONNECT_TIMEOUT_SECONDS = 30
+_SSH_ESTABLISH_TIMEOUT_SECONDS = 45
+
 # Module-level binding: tests patch ``ssh._load_hermes_env_vars`` to fake the .env file.
 _load_hermes_env_vars = load_hermes_env_vars
 
@@ -118,7 +123,8 @@ class SSHEnvironment(BaseEnvironment):
         if _SSH_MULTIPLEX:
             cmd.extend(["-o", f"ControlPath={self._control_socket_for(send_env)}",
                         "-o", "ControlMaster=auto", "-o", "ControlPersist=300"])
-        cmd.extend(["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=10"])
+        cmd.extend(["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new",
+                    "-o", f"ConnectTimeout={_SSH_CONNECT_TIMEOUT_SECONDS}"])
         # Names only; values ride the ssh client's own environment (never the remote command text).
         cmd.extend(arg for name in send_env for arg in ("-o", f"SendEnv={name}"))
         cmd.extend(self._target_flags("-p"))
@@ -137,7 +143,7 @@ class SSHEnvironment(BaseEnvironment):
 
     def _establish_connection(self):
         try:
-            result = self._run_ssh("echo 'SSH connection established'", timeout=15)
+            result = self._run_ssh("echo 'SSH connection established'", timeout=_SSH_ESTABLISH_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
             raise EnvironmentConnectionError(
                 f"SSH connection to {self.user}@{self.host} timed out",

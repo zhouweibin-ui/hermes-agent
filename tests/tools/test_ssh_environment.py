@@ -64,6 +64,19 @@ class TestBuildSSHCommand:
                       "BatchMode=yes", "StrictHostKeyChecking=accept-new"):
             assert flag in cmd
 
+    def test_slow_tunnel_handshake_gets_bounded_longer_timeouts(self, monkeypatch):
+        """A high-latency reverse tunnel can need >10s for the SSH banner, but initialization must stay bounded."""
+        env = SSHEnvironment(host="h", user="u")
+        assert "ConnectTimeout=30" in env._build_ssh_command()
+        seen = {}
+        def fake_run_ssh(_command, timeout):
+            seen["timeout"] = timeout
+            return subprocess.CompletedProcess([], 0)
+
+        monkeypatch.setattr(env, "_run_ssh", fake_run_ssh)
+        env._establish_connection()
+        assert seen["timeout"] == 45
+
     def test_controlmaster_gated_off_on_windows(self, monkeypatch):
         """#73927: Windows OpenSSH has no Unix-domain ControlMaster, so the
         ControlPath/ControlMaster/ControlPersist options must be omitted —
