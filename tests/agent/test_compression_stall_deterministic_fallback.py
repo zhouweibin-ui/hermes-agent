@@ -5,9 +5,10 @@ next attempt stalls again, "continuing without compression" would re-enter the s
 turn, so the stall retry ladder ends with a deterministic rung: the worker is re-run with the summary LLM
 skipped and compress() commits its static fallback summary through the ordinary lease/fence pipeline.
 A first stall keeps today's behaviour (backoff, LLM retry after it lapses) unless the request is already
-above the model's context window — then nothing can be sent unchanged and the rung runs at once (#114594). A pinned fallback route whose
-summary call fails still commits under the default ``abort_on_summary_failure=false`` — that must not be
-logged as a recovery (#112387 review caveat).
+above the model's context window — then nothing can be sent unchanged and the rung runs at once (#114594).
+Exhausting the total pre-commit ceiling also escalates immediately, including when partial streamed output
+kept the idle watchdog alive. A pinned fallback route whose summary call fails still commits under the
+default ``abort_on_summary_failure=false`` — that must not be logged as a recovery (#112387 review caveat).
 """
 
 from __future__ import annotations
@@ -299,3 +300,46 @@ def test_over_window_request_commits_the_deterministic_fallback_on_the_first_sta
     assert out is not live and len(out) < len(live)
     assert len(_summary_rows(out)) == 1, "the over-window request got a committed deterministic handoff"
     assert getattr(agent, "_last_compression_timed_out", None) is not True
+
+
+def test_total_ceiling_with_streaming_progress_runs_deterministic_fallback():
+    """Partial output keeps the idle watchdog alive, but exhausting the total ceiling must still degrade.
+
+    This is the below-window broken-stream case: no earlier timeout count and no over-window request are
+    required once the primary has spent its entire pre-commit budget without producing a compression.
+    """
+    original = [{"role": "user", "content": "keep-me"}]
+    recovered = [{"role": "assistant", "content": "compressed"}]
+    pause = threading.Event()
+    attempts = []
+    timeout_causes = []
+    timeout_callbacks = []
+
+    def primary_worker(fence: CompressionCommitFence):
+        attempts.append("primary")
+        try:
+            while not fence.deadline_exceeded:
+                fence.touch_progress()
+                pause.wait(0.001)
+            return original, "unchanged"
+        finally:
+            pause.set()
+
+    def fallback_worker(_fence: CompressionCommitFence):
+        attempts.append("fallback")
+        return recovered, "compressed-prompt"
+
+    with patch("agent.auxiliary_client._get_auxiliary_task_config", return_value={"fallback_chain": []}):
+        msgs, prompt = run_compress_context_with_progress_timeout(
+            worker=primary_worker, fallback_worker=fallback_worker, messages=original,
+            system_prompt_fallback="degraded-prompt", idle_timeout_seconds=0.05,
+            total_ceiling_seconds=0.05, request_exceeds_window=False,
+            new_fence=CompressionCommitFence,
+            on_timeout_cause=lambda *cause: timeout_causes.append(cause),
+            on_timeout=lambda *args: timeout_callbacks.append(args),
+        )
+
+    assert msgs is recovered and prompt == "compressed-prompt"
+    assert attempts == ["primary", "fallback"]
+    assert timeout_causes == [(True, True)]
+    assert timeout_callbacks == []

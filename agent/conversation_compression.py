@@ -896,8 +896,8 @@ def resolve_compression_fallback_route() -> Optional[dict]:
 
 
 def _stall_retry_routes(escalate_deterministic: bool) -> list:
-    """Pinned routes for the stall retry, in order: the configured chain entry, then (only once a
-    stall-class backoff has already burned a window in this session) the deterministic fallback summary."""
+    """Pinned routes for the stall retry: the configured chain entry, then a deterministic fallback after
+    an earlier stall-class failure or total-ceiling exhaustion."""
     routes = [route for route in (resolve_compression_fallback_route(),) if route is not None]
     if escalate_deterministic:
         from agent.context_compressor import DETERMINISTIC_SUMMARY_ROUTE
@@ -933,7 +933,8 @@ def _retry_compression_on_fallback_chain(
 ) -> Optional[tuple[list, str]]:
     """Re-run an aborted compression with the summary route pinned: once on the configured chain entry,
     then — when ``escalate_deterministic`` (a stall backoff already burned one idle window this session,
-    #112420) — once with the summary LLM skipped so compress() commits its deterministic fallback summary.
+    #112420, or the total pre-commit ceiling was exhausted) — once with the summary LLM skipped so
+    compress() commits its deterministic fallback summary.
     Returns ``(messages, system_prompt)`` on real compression, else ``None`` and the caller degrades as
     before. The entry's ``timeout`` sets the idle window. Re-runs the whole worker, so pre-compression
     callbacks must be idempotent.
@@ -1297,7 +1298,10 @@ def run_compress_context_with_progress_timeout(
                 precommit_deadline_monotonic=fence.deadline_monotonic or precommit_deadline_monotonic,
                 on_commit_overrun=on_commit_overrun,
                 on_timeout_cause=on_timeout_cause, telemetry_agent=telemetry_agent, new_fence=new_fence,
-                escalate_deterministic=escalate_deterministic,
+                # A steady trickle can keep the idle watchdog alive forever. Spending the entire shared
+                # pre-commit budget is itself terminal: degrade now even without an earlier timeout or an
+                # over-window request, rather than returning the same oversized transcript every turn.
+                escalate_deterministic=escalate_deterministic or fence.deadline_exceeded,
             )
             if recovered is not None:
                 return recovered

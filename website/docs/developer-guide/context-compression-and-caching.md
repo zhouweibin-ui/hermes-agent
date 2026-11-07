@@ -204,6 +204,12 @@ attempt anyway:
   compaction rebinds the compressor and resets the ladder count, so each
   compaction cycle grants the LLM route one stall before escalating; the
   persisted cooldown row still paces attempts across turns and restarts.
+- **Total ceiling exhausted → deterministic fallback.** Partial streamed
+  output can keep resetting the idle watchdog without ever completing a
+  summary. Once the shared pre-commit ceiling is spent, the deterministic rung
+  therefore runs even on the first attempt and when the uncompressed request
+  still fits the model window; a trickling broken stream cannot suppress
+  compaction indefinitely.
 - **Summary provider overloaded → abort, transcript kept.** When the summary
   call fails with a provider-overload error (`overloaded`, `at capacity`,
   HTTP 529) and the one-shot main-model retry also fails, compress() aborts
