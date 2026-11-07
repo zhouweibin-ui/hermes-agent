@@ -536,6 +536,7 @@ TERMINAL_SSH_USER=ubuntu
 | `TERMINAL_SSH_PORT` | `22` | SSH port |
 | `TERMINAL_SSH_KEY` | (system default) | Path to SSH private key |
 | `TERMINAL_SSH_PERSISTENT` | follows `terminal.persistent_shell` (`true`) | Carry exported env vars between commands |
+| `TERMINAL_SSH_SYNC_FILES` | `true` | Upload skills/credentials and sync them back on cleanup; set `terminal.ssh_sync_files: false` for independently managed remote files |
 
 **How it works:** Connects at init time with `BatchMode=yes` and `StrictHostKeyChecking=accept-new`, then captures the remote login shell's environment once into a snapshot file. Every command runs as a fresh `bash -c` that sources that snapshot, `cd`s to the tracked working directory, and runs your command.
 

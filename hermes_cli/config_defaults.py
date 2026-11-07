@@ -375,6 +375,9 @@ DEFAULT_CONFIG = {
         # SSH: carry exported env vars between commands (cwd always carries). false = every command
         # starts from the login env, profile functions included. Local: TERMINAL_LOCAL_PERSISTENT.
         "persistent_shell": True,
+        # Upload skills/credential files into the SSH sandbox and sync them back on cleanup. Disable when
+        # those files are managed independently and only remote execution is wanted.
+        "ssh_sync_files": True,
     },
 
     "web": {

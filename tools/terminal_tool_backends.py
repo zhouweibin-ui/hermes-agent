@@ -207,7 +207,8 @@ def _build_ssh_env(*, cwd, timeout, ssh_config, probe_only=False, **_):
         raise ValueError("SSH environment requires ssh_host and ssh_user to be configured")
     return _SSHEnvironment(host=ssh_config["host"], user=ssh_config["user"], port=ssh_config.get("port", 22),
                            key_path=ssh_config.get("key", ""), cwd=cwd, timeout=timeout, probe_only=probe_only,
-                           persistent=ssh_config.get("persistent", True))
+                           persistent=ssh_config.get("persistent", True),
+                           sync_files=ssh_config.get("sync_files", True))
 
 
 def _stamp_sandbox_home(env_obj, provider, cwd) -> None:

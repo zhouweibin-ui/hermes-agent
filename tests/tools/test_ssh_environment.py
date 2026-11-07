@@ -77,6 +77,16 @@ class TestBuildSSHCommand:
         env._establish_connection()
         assert seen["timeout"] == 45
 
+    def test_file_sync_can_be_disabled_for_central_remote_state(self):
+        """An operator with independently managed skills must be able to skip upload/sync-back entirely."""
+        from tools.terminal_tool_backends import _build_ssh_env
+
+        env = _build_ssh_env(
+            cwd="~", timeout=60,
+            ssh_config={"host": "h", "user": "u", "sync_files": False},
+        )
+        assert env._sync_manager is None
+
     def test_controlmaster_gated_off_on_windows(self, monkeypatch):
         """#73927: Windows OpenSSH has no Unix-domain ControlMaster, so the
         ControlPath/ControlMaster/ControlPersist options must be omitted —
