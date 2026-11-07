@@ -79,12 +79,10 @@ class TestBuildSSHCommand:
 
     def test_file_sync_can_be_disabled_for_central_remote_state(self):
         """An operator with independently managed skills must be able to skip upload/sync-back entirely."""
-        from tools.terminal_tool_backends import _build_ssh_env
+        from tools.terminal_tool_backends import _build_ssh_env, _ssh_config_from_config
 
-        env = _build_ssh_env(
-            cwd="~", timeout=60,
-            ssh_config={"host": "h", "user": "u", "sync_files": False},
-        )
+        ssh_config = _ssh_config_from_config({"ssh_host": "h", "ssh_user": "u", "ssh_sync_files": False})
+        env = _build_ssh_env(cwd="~", timeout=60, ssh_config=ssh_config)
         assert env._sync_manager is None
 
     def test_controlmaster_gated_off_on_windows(self, monkeypatch):
